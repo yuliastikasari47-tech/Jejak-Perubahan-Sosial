@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Edukasi IPS: Drag & Drop Perubahan Sosial</title>
+    <!-- Tailwind CSS untuk Styling Responsif -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Poppins untuk kesan ramah siswa SMP -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            /* Background gradien lembut */
+            background: linear-gradient(135deg, #e0f2fe 0%, #f3e8ff 100%);
+            min-height: 100vh;
+        }
+
+        /* Kelas khusus elemen yang bisa di-drag */
+        .draggable {
+            touch-action: none; /* Mencegah layar ter-scroll saat menyentuh/menggeser kartu di HP */
+            user-select: none;
+            will-change: transform, left, top;
+        }
+
+        /* Animasi saat kartu digenggam (drag) */
+        .dragging {
+            opacity: 0.95;
+            transform: scale(1.05) rotate(2deg);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+            cursor: grabbing !important;
+        }
+
+        /* Animasi indikator salah (merah & bergetar) */
+        .card-wrong {
+            background-color: #fee2e2 !important; /* Merah muda */
+            border-color: #ef4444 !important;
+            color: #991b1b !important;
+            animation: shake 0.4s ease-in-out;
+            pointer-events: none; /* Cegah klik saat animasi */
+        }
+
+        /* Animasi indikator benar (hijau) */
+        .card-correct {
+            background-color: #dcfce7 !important; /* Hijau muda */
+            border-color: #22c55e !important;
+            color: #166534 !important;
+            cursor: default !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-8px); }
+            40% { transform: translateX(8px); }
+            60% { transform: translateX(-8px); }
+            80% { transform: translateX(8px); }
+        }
+
+        /* Transisi zona drop saat kartu berada di atasnya */
+        .drop-zone-highlight {
+            background-color: rgba(255, 255, 255, 0.6);
+            transform: scale(1.02);
+        }
+        
+        /* Smooth transition untuk mengembalikan kartu ke tempat semula */
+        .snap-back {
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+    </style>
+</head>
+<body class="text-gray-800 p-4 md:p-8 flex flex-col items-center">
+
+    <!-- Header & Informasi Game -->
+    <header class="w-full max-w-6xl text-center mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold text-indigo-800 mb-2 drop-shadow-sm">
+            Game Edukasi IPS: Drag & Drop Perubahan Sosial
+        </h1>
+        <p class="text-gray-600 mb-4 text-sm md:text-base font-medium">
+            Tarik (Drag) kartu contoh fenomena di bawah ke dalam kotak kategori yang tepat!
+        </p>
+        
+        <!-- Papan Skor -->
+        <div class="inline-flex items-center gap-4 bg-white px-6 py-3 rounded-full shadow-md border-2 border-indigo-200">
+            <span class="text-lg font-bold text-gray-700">Skor:</span>
+            <div class="text-2xl font-black text-indigo-600">
+                <span id="score">0</span> / <span id="total-score">12</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Kontainer Utama Permainan -->
+    <main class="w-full max-w-6xl flex flex-col gap-8">
+        
+        <!-- Zona Drop (6 Kategori) -->
+        <section id="drop-zones" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            <!-- Zona akan di-render oleh JavaScript -->
+        </section>
+
+        <hr class="border-indigo-200 border-2 rounded-full">
+
+        <!-- Kumpulan Kartu (Draggable Items) -->
+        <section>
+            <h2 class="text-xl font-bold text-center text-indigo-800 mb-4">Kartu Fenomena (Geser Saya!)</h2>
+            <div id="cards-pool" class="flex flex-wrap justify-center gap-3 md:gap-4 p-4 min-h-[200px] bg-white bg-opacity-40 rounded-2xl border-2 border-white backdrop-blur-sm shadow-inner">
+                <!-- Kartu akan di-render oleh JavaScript -->
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal / Pop-up Menang -->
+    <div id="win-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-[100] transition-opacity duration-300 opacity-0">
+        <div class="bg-white p-8 rounded-3xl text-center max-w-md mx-4 transform scale-90 transition-transform duration-300 shadow-2xl border-4 border-green-400">
+            <div class="text-7xl mb-4 animate-bounce">🏆</div>
+            <h2 class="text-3xl font-black text-green-600 mb-2">Luar Biasa!</h2>
+            <p class="text-gray-600 mb-8 font-medium">
+                Kamu telah berhasil mengklasifikasikan semua bentuk perubahan sosial dengan benar. Pertahankan prestasimu!
+            </p>
+            <button onclick="resetGame()" class="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-8 py-3 rounded-full font-bold text-lg hover:shadow-lg hover:scale-105 transition-all active:scale-95">
+                Main Lagi
+            </button>
+        </div>
+    </div>
+
+    <!-- JavaScript Logika Permainan -->
+    <script>
+        // Data Kategori (6 Zona Drop)
+        const categories = [
+            { id: 'cepat', name: 'Perubahan Cepat (Revolusi)', icon: '⚡', color: 'bg-orange-100 border-orange-400 text-orange-800' },
+            { id: 'lambat', name: 'Perubahan Lambat (Evolusi)', icon: '🐢', color: 'bg-teal-100 border-teal-400 text-teal-800' },
+            { id: 'besar', name: 'Perubahan Besar', icon: '🌍', color: 'bg-blue-100 border-blue-400 text-blue-800' },
+            { id: 'kecil', name: 'Perubahan Kecil', icon: '👕', color: 'bg-pink-100 border-pink-400 text-pink-800' },
+            { id: 'direncanakan', name: 'Perubahan Direncanakan', icon: '🏗️', color: 'bg-purple-100 border-purple-400 text-purple-800' },
+            { id: 'tidak_direncanakan', name: 'Perubahan Tidak Direncanakan', icon: '🌋', color: 'bg-red-100 border-red-400 text-red-800' }
+        ];
+
+        // Data 12 Kartu Fenomena
+        const cardsData = [
+            { id: 'c1', category: 'cepat', text: 'Proklamasi Kemerdekaan Indonesia tahun 1945.' },
+            { id: 'c2', category: 'cepat', text: 'Revolusi Industri yang mengubah proses produksi dari tenaga manusia menjadi mesin.' },
+            { id: 'l1', category: 'lambat', text: 'Perubahan cara berkomunikasi dari surat menyurat menjadi pesan digital.' },
+            { id: 'l2', category: 'lambat', text: 'Perubahan pola mata pencaharian masyarakat dari bertani ke sektor jasa.' },
+            { id: 'b1', category: 'besar', text: 'Industrialisasi yang mengubah struktur sosial dan ekonomi masyarakat secara menyeluruh.' },
+            { id: 'b2', category: 'besar', text: 'Perubahan sistem pemerintahan dari monarki (kerajaan) menjadi republik.' },
+            { id: 'k1', category: 'kecil', text: 'Perubahan tren model pakaian dan gaya rambut yang diikuti sebagian kalangan remaja.' },
+            { id: 'k2', category: 'kecil', text: 'Perkembangan penggunaan bahasa gaul (slang) dalam pergaulan sehari-hari.' },
+            { id: 'd1', category: 'direncanakan', text: 'Pembangunan jalan tol oleh pemerintah untuk memperlancar jalur transportasi.' },
+            { id: 'd2', category: 'direncanakan', text: 'Penerapan sistem Kurikulum Merdeka di sekolah-sekolah untuk meningkatkan mutu pendidikan.' },
+            { id: 't1', category: 'tidak_direncanakan', text: 'Perubahan sistem pembelajaran dan pola hidup masyarakat secara mendadak akibat pandemi COVID-19.' },
+            { id: 't2', category: 'tidak_direncanakan', text: 'Perpindahan penduduk (pengungsian) secara terpaksa karena bencana alam letusan gunung.' }
+        ];
+
+        // Variabel Global
+        const zonesContainer = document.getElementById('drop-zones');
+        const cardsContainer = document.getElementById('cards-pool');
+        const scoreElement = document.getElementById('score');
+        let score = 0;
+        let totalCards = cardsData.length;
+
+        // Variabel untuk Drag & Drop
+        let activeCard = null;
+        let placeholder = null;
+        let shiftX = 0;
+        let shiftY = 0;
+
+        // Fungsi mengacak array (Fisher-Yates Shuffle)
+        function shuffleArray(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        // Inisialisasi Permainan
+        function initGame() {
+            score = 0;
+            scoreElement.textContent = score;
+            
+            // Sembunyikan modal kemenangan jika ada
+            const modal = document.getElementById('win-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('opacity-100');
+            modal.querySelector('div').classList.remove('scale-100');
+
+            // Render Zona Kategori
+            zonesContainer.innerHTML = '';
+            categories.forEach(cat => {
+                const zone = document.createElement('div');
+                zone.className = `drop-zone ${cat.color} border-2 border-dashed rounded-2xl p-4 flex flex-col shadow-sm transition-all duration-200 min-h-[160px]`;
+                zone.dataset.category = cat.id;
+                zone.innerHTML = `
+                    <div class="flex items-center justify-center gap-2 mb-3 pb-2 border-b border-opacity-30 border-current">
+                        <span class="text-2xl">${cat.icon}</span>
+                        <h3 class="font-bold text-center text-sm lg:text-base leading-tight">${cat.name}</h3>
+                    </div>
+                    <div class="drop-content flex-1 flex flex-col gap-2 rounded-lg transition-colors duration-200"></div>
+                `;
+                zonesContainer.appendChild(zone);
+            });
+
+            // Render Kartu (Diacak)
+            cardsContainer.innerHTML = '';
+            const shuffledCards = shuffleArray([...cardsData]);
+            
+            shuffledCards.forEach(card => {
+                const el = document.createElement('div');
+                el.className = 'draggable bg-white p-3 md:p-4 rounded-xl shadow-md border border-gray-200 cursor-grab text-sm font-medium hover:shadow-lg transition-shadow max-w-[280px] flex-1 min-w-[200px] text-center';
+                el.dataset.category = card.category;
+                el.textContent = card.text;
+                
+                // Tambahkan Event Listener (Pointer Events)
+                el.addEventListener('pointerdown', onPointerDown);
+                
+                cardsContainer.appendChild(el);
+            });
+        }
+
+        // --- LOGIKA DRAG AND DROP (POINTER EVENTS) ---
+
+        function onPointerDown(e) {
+            // Abaikan jika bukan klik kiri pada mouse
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+            const target = e.currentTarget;
+            
+            // Abaikan jika kartu sudah benar letaknya
+            if (target.classList.contains('card-correct')) return;
+
+            activeCard = target;
+            activeCard.setPointerCapture(e.pointerId); // Menangkap pergerakan kursor/jari
+            activeCard.classList.remove('cursor-grab');
+            activeCard.classList.add('cursor-grabbing');
+
+            // Hitung posisi kursor relatif terhadap kartu
+            const rect = activeCard.getBoundingClientRect();
+            shiftX = e.clientX - rect.left;
+            shiftY = e.clientY - rect.top;
+
+            // Buat placeholder (agar layout tidak berantakan saat kartu diangkat)
+            placeholder = document.createElement('div');
+            placeholder.className = 'bg-indigo-50 border-2 border-dashed border-indigo-200 rounded-xl max-w-[280px] flex-1 min-w-[200px]';
+            placeholder.style.width = rect.width + 'px';
+            placeholder.style.height = rect.height + 'px';
+            placeholder.style.margin = getComputedStyle(activeCard).margin;
+            
+            activeCard.parentNode.insertBefore(placeholder, activeCard);
+
+            // Ubah kartu menjadi melayang (fixed)
+            activeCard.style.position = 'fixed';
+            activeCard.style.zIndex = '1000';
+            activeCard.style.width = rect.width + 'px';
+            activeCard.style.height = rect.height + 'px';
+            activeCard.style.margin = '0';
+            activeCard.style.left = (e.clientX - shiftX) + 'px';
+            activeCard.style.top = (e.clientY - shiftY) + 'px';
+
+            document.body.appendChild(activeCard);
+            activeCard.classList.add('dragging');
+
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', onPointerUp);
+            document.addEventListener('pointercancel', onPointerUp);
+        }
+
+        function onPointerMove(e) {
+            if (!activeCard) return;
+
+            // Pindahkan kartu mengikuti kursor/jari
+            activeCard.style.left = (e.clientX - shiftX) + 'px';
+            activeCard.style.top = (e.clientY - shiftY) + 'px';
+
+            // Logika Highlighting Zona Drop
+            activeCard.style.display = 'none'; // Sembunyikan sementara untuk mengecek elemen di bawahnya
+            const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+            activeCard.style.display = ''; // Tampilkan kembali
+
+            // Hapus highlight dari semua zona
+            document.querySelectorAll('.drop-content').forEach(el => el.classList.remove('drop-zone-highlight'));
+
+            if (!elemBelow) return;
+
+            // Cek jika elemen di bawahnya adalah zona drop
+            const dropZone = elemBelow.closest('.drop-zone');
+            if (dropZone) {
+                dropZone.querySelector('.drop-content').classList.add('drop-zone-highlight');
+            }
+        }
+
+        function onPointerUp(e) {
+            if (!activeCard) return;
+
+            document.removeEventListener('pointermove', onPointerMove);
+            document.removeEventListener('pointerup', onPointerUp);
+            document.removeEventListener('pointercancel', onPointerUp);
+            activeCard.releasePointerCapture(e.pointerId);
+
+            // Cek lokasi menjatuhkan kartu
+            activeCard.style.display = 'none';
+            const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+            activeCard.style.display = '';
+
+            // Hapus semua efek highlight
+            document.querySelectorAll('.drop-content').forEach(el => el.classList.remove('drop-zone-highlight'));
+
+            const dropZone = elemBelow ? elemBelow.closest('.drop-zone') : null;
+
+            if (dropZone) {
+                if (dropZone.dataset.category === activeCard.dataset.category) {
+                    // JAWABAN BENAR
+                    handleCorrectDrop(dropZone);
+                } else {
+                    // JAWABAN SALAH
+                    handleWrongDrop();
+                }
+            } else {
+                // DIJATUHKAN DI LUAR ZONA
+                revertCard(false);
+            }
+        }
+
+        function handleCorrectDrop(dropZone) {
+            activeCard.classList.remove('dragging', 'cursor-grabbing');
+            activeCard.classList.add('card-correct');
+            
+            // Hilangkan styling inline fixed
+            resetInlineStyles(activeCard);
+            activeCard.style.width = '100%'; // Agar pas mengisi zona
+            activeCard.style.maxWidth = 'none';
+
+            // Masukkan kartu ke dalam konten zona drop
+            dropZone.querySelector('.drop-content').appendChild(activeCard);
+            
+            // Hapus placeholder
+            if (placeholder && placeholder.parentNode) {
+                placeholder.parentNode.removeChild(placeholder);
+            }
+
+            activeCard = null;
+            placeholder = null;
+
+            updateScore();
+        }
+
+        function handleWrongDrop() {
+            activeCard.classList.add('card-wrong');
+            revertCard(true); // true = tampilkan animasi salah (merah)
+        }
+
+        function revertCard(isWrong = false) {
+            if (!placeholder || !activeCard) return;
+
+            const rect = placeholder.getBoundingClientRect();
+            
+            // Berikan animasi terbang kembali
+            activeCard.classList.add('snap-back');
+            activeCard.style.left = rect.left + 'px';
+            activeCard.style.top = rect.top + 'px';
+            activeCard.classList.remove('dragging', 'cursor-grabbing');
+            
+            // Tunggu animasi selesai
+            setTimeout(() => {
+                if (!activeCard) return; // safety check
+                
+                activeCard.classList.remove('snap-back');
+                if (isWrong) activeCard.classList.remove('card-wrong');
+                activeCard.classList.add('cursor-grab');
+
+                resetInlineStyles(activeCard);
+
+                // Kembalikan kartu ke posisi placeholder
+                if (placeholder.parentNode) {
+                    placeholder.parentNode.replaceChild(activeCard, placeholder);
+                }
+                
+                activeCard = null;
+                placeholder = null;
+            }, 300);
+        }
+
+        function resetInlineStyles(element) {
+            element.style.position = '';
+            element.style.zIndex = '';
+            element.style.width = '';
+            element.style.height = '';
+            element.style.margin = '';
+            element.style.left = '';
+            element.style.top = '';
+        }
+
+        function updateScore() {
+            score++;
+            scoreElement.textContent = score;
+            
+            // Cek kondisi menang
+            if (score === totalCards) {
+                setTimeout(() => {
+                    const modal = document.getElementById('win-modal');
+                    const modalBox = modal.querySelector('div');
+                    
+                    modal.classList.remove('hidden');
+                    // Paksa browser me-render ulang sebelum transisi opacity
+                    void modal.offsetWidth;
+                    modal.classList.add('opacity-100');
+                    modalBox.classList.add('scale-100');
+                }, 500); // Munculkan popup setengah detik setelah kartu terakhir benar
+            }
+        }
+
+        function resetGame() {
+            initGame();
+        }
+
+        // Jalankan game saat halaman dimuat
+        window.addEventListener('DOMContentLoaded', initGame);
+
+    </script>
+</body>
+</html>
